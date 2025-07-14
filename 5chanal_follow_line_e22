@@ -1,0 +1,201 @@
+#define IN1 5
+#define IN2 4
+#define IN3 19
+#define IN4 18
+#define enA 26
+#define enB 27
+
+const int pwmA = 0;
+const int pwmB = 1;
+
+int sensorPins[9] = {
+    32, 33, 34, 35, 25, 12, 13, 15, 14};
+int s[11], total, sensor_position;
+int threshold = 3200;
+float avg;
+int position[9] = {4, 3, 2, 1, 0, -1, -2, -3, -4};
+int set_point = 0;
+
+int button_pin = 2;
+int led = 22;
+bool button_pin_state;
+
+void setup()
+{
+    Serial.begin(115200);
+
+    pinMode(IN1, OUTPUT);
+    pinMode(IN2, OUTPUT);
+    pinMode(IN3, OUTPUT);
+    pinMode(IN4, OUTPUT);
+
+    pinMode(button_pin, INPUT_PULLUP);
+    pinMode(led, OUTPUT);
+
+    // PWM
+    ledcSetup(pwmA, 1000, 8);
+    ledcAttachPin(enA, pwmA);
+    ledcSetup(pwmB, 1000, 8);
+    ledcAttachPin(enB, pwmB);
+
+    Serial.println
+        delay(500);
+}
+
+void loop()
+{
+    button_pin_state = digitalRead(button_pin);
+    display_value();
+
+    if (button_pin_state == LOW)
+    {
+        for (int i = 0; i < 3; ++i)
+        {
+            digitalWrite(led, HIGH);
+            delay(100);
+            digitalWrite(led, LOW);
+            delay(100);
+        }
+        PID_LINE_FOLLOW();
+    }
+}
+
+void Sensor_reading()
+{
+    sensor_position = 0;
+    total = 0;
+
+    Serial.print("Raw: ");
+    for (byte i = 0; i < 9; i++)
+    {
+        int val = analogRead(sensorPins[i]);
+        s[i] = val;
+
+        Serial.print(val);
+        Serial.print(" ");
+
+        if (s[i] > threshold)
+            s[i] = 1;
+        else
+            s[i] = 0;
+
+        sensor_position += s[i] * position[i];
+        total += s[i];
+    }
+
+    Serial.print("  Bin: ");
+    for (byte i = 0; i < 9; i++)
+    {
+        Serial.print(s[i]);
+    }
+
+    if (total)
+        avg = sensor_position / total;
+    Serial.print("  avg=");
+    Serial.println(avg);
+}
+
+void PID_LINE_FOLLOW()
+{
+    float kp = 30, kd = 300;
+    float error, previous_error = 0, P, D, PID_Value;
+    int base_speed = 130;
+    int left_motor_speed, right_motor_speed;
+    char t = 's';
+
+    while (true)
+    {
+        Sensor_reading();
+        error = set_point - avg;
+        P = error * kp;
+        D = kd * (error - previous_error);
+        PID_Value = P + D;
+        previous_error = error;
+
+        right_motor_speed = base_speed - PID_Value;
+        left_motor_speed = base_speed + PID_Value;
+
+        right_motor_speed = constrain(right_motor_speed, 0, 255);
+        left_motor_speed = constrain(left_motor_speed, 0, 255);
+
+        motor(left_motor_speed, right_motor_speed);
+
+        // ถ้าหลุดเส้น
+        if (total == 0)
+        {
+            digitalWrite(led, HIGH);
+            if (t != 's')
+            {
+                if (t == 'r')
+                    motor(150, -150);
+                else
+                    motor(-150, 150);
+                while (!s[5])
+                    Sensor_reading(); // ตรงกลาง
+                digitalWrite(led, LOW);
+            }
+        }
+
+        if (s[10] == 1 && s[0] == 0)
+            t = 'l';
+        if (s[10] == 0 && s[0] == 1)
+            t = 'r';
+
+        if (total == 9)
+        {
+            Sensor_reading();
+            if (total == 9)
+            {
+                motor(0, 0);
+                while (total == 9)
+                    Sensor_reading();
+            }
+            else if (total == 0)
+                t = 's';
+        }
+    }
+}
+
+void display_value()
+{
+    for (byte i = 0; i < 9; i++)
+    {
+        int val = analogRead(sensorPins[i]);
+        Serial.print(val);
+        Serial.print(" ");
+    }
+    Serial.println();
+    delay(50);
+}
+
+void motor(int a, int b)
+{
+    if (a >= 0)
+    {
+        digitalWrite(IN3, HIGH);
+        digitalWrite(IN4, LOW);
+    }
+    else
+    {
+        a = -a;
+        digitalWrite(IN3, LOW);
+        digitalWrite(IN4, HIGH);
+    }
+
+    if (b >= 0)
+    {
+        digitalWrite(IN1, HIGH);
+        digitalWrite(IN2, LOW);
+    }
+    else
+    {
+        b = -b;
+        digitalWrite(IN1, LOW);
+        digitalWrite(IN2, HIGH);
+    }
+
+    a = constrain(a, 0, 255);
+    b = constrain(b, 0, 255);
+
+    ledcWrite(pwmB, a);
+    ledcWrite(pwmA, b);

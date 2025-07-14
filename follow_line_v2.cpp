@@ -5,7 +5,6 @@
 #define IN4 18
 #define enA 26 // PWM ซ้าย
 #define enB 27 // PWM ขวา
-
 // PWM channels
 #define CH_A 0
 #define CH_B 1
